@@ -13,6 +13,7 @@
 | M5 扣回核算 | 查看并运行扣回核算 | `/api/deductions` | `app/modules/m5_deductions/rules.py` | `tests/test_m5.py` |
 | M6 进度对账 | 查看并运行进度对账 | `/api/valuation` | `app/modules/m6_valuation/rules.py` | `tests/test_m6.py` |
 | M7 签证归档 | 查看并运行签证归档 | `/api/certificates` | `app/modules/m7_certificates/rules.py` | `tests/test_m7.py` |
+| M8 钢筋净量裁决 | 查看并运行钢筋净量裁决 | `/api/rebar` | `app/modules/m8_rebar/rules.py` | `tests/test_m8.py` |
 
 ## 陷阱登记
 
@@ -30,10 +31,19 @@
 | TRAP-07 | 累计量空值 | 按零冲回 | 隔离缺失 | `app/values.py` | `tests/test_m2.py::test_real_null_not_zero` |
 | TRAP-10 | 分币舍入 | 浮点误差 | 分项量化后净额守恒 | `app/modules/m5_deductions/rules.py` | `tests/test_m5.py::test_fraction_rounds_to_cent` |
 | TRAP-23 | 变更生效边界 | 旧价覆盖 | 按周期选择已批版本 | `app/modules/m3_changes/rules.py` | `tests/test_m3.py::test_effective_boundary` |
+| TRAP-31 | 领料即净量 | 损耗错发进入工程款 | 净量上限裁决，损耗/错发/超限整批隔离 | `app/modules/m8_rebar/rules.py` | `tests/test_m8.py::test_waste_and_misdelivery_never_enter_net` |
+| TRAP-32 | 批次重试重复累计 | 重试再加一遍净量 | 业务键去重，完全相同行DUPLICATE_BATCH隔离不累计 | `app/modules/m8_rebar/intake.py` | `tests/test_m8.py::test_retry_batch_is_not_accumulated_twice` |
+| TRAP-33 | 已安装缺依据跨月断档 | 强签或漏行 | carry_forward结转保留来源，下期重归集 | `app/modules/m8_rebar/rules.py` | `tests/test_m8.py::test_pending_evidence_carries_forward_with_source` |
+| TRAP-34 | 发布失败留脏状态 | 半发布覆盖旧版 | 事务回滚恢复旧版，版本条件更新 | `app/store.py` | `tests/test_m8.py::test_api_publish_failure_restores_old_version` |
+| TRAP-35 | 重新归集丢来源 | 只留合计无法追溯 | lineage逐行去向+物理行对平 | `app/modules/m8_rebar/rules.py` | `tests/test_m8.py::test_re_aggregation_keeps_every_source_line` |
 
 ## 对账规则
 
 输入原始逻辑行=最终采纳来源行+隔离来源行+重复行+空白行+分段表头。派生记录用_sources保存完整来源，因此分组不丢行。业务预期合计与上游申报合计之差等于逐行差异之和。结果按输入摘要、规则版本及参数产生唯一批次，事务写入；同源重跑只复用已有批次。
+
+## 钢筋净量裁决规则（M8）
+
+领料物理行=计入净量行+超限隔离行+损耗/错发隔离行+待补结转行+重试/冲突/表头/空行；lineage逐行登记去向，lineage_balanced对平。计入净量按图纸池优先、已批变更池其次扣减，每行带basis_drawing_qty、basis_change_qty与basis_change_id可追溯到变更单。run_id以rebar-前缀与计量域隔离，存储以domain区分；发布成功才写publish_events并version+1，失败整体回滚。
 
 ## 已知不覆盖
 

@@ -20,10 +20,17 @@ docker compose exec -T app pytest -q
 - 5. 扣回核算：`/deductions`，`/api/deductions`。
 - 6. 进度对账：`/valuation`，`/api/valuation`。
 - 7. 签证归档：`/certificates`，`/api/certificates`。
+- 8. 钢筋净量裁决：`/rebar`，`/api/rebar`。
 
 ## 核心规则
 
 累计申报必须减前期已审金额，变更按审批生效版本覆盖；负进度需关联冲回证据。
+
+钢筋领料不等于净工程量。M8把领料批次裁决为本期唯一可签认净量：净量上限=图纸净量+已批且当期生效变更；净料按上限池（图纸池优先、变更池其次）计入，超出部分隔离；损耗、错发强制隔离不进工程款；已安装但净量依据待补的批次结转下期并保留来源行；同批次重试按业务键拦截，不重复累计；非本期、未知清单项/性质同样隔离。发布失败整体回滚恢复旧版，重新归集按输入摘要生成新批次且来源行全部可追溯。
+
+## 钢筋接口
+
+`POST /api/rebar/runs` 接收 sample 或 csv（参数 `parameters` 可覆盖图纸净量、前审净量、已批变更量与变更目录），幂等保存；`GET /api/rebar/runs` 返回钢筋域历史；`POST /api/rebar/runs/<id>/review` 复核；`POST /api/rebar/runs/<id>/publish` 发布，`simulate_failure:true` 演练失败回滚；`POST /api/rebar/upload` 接收 multipart 文件；`GET /api/runs/<id>/archive` 导出含 accepted/quarantine/carry_forward 三类证据的CSV。
 
 ## 演示
 
@@ -34,7 +41,7 @@ docker compose exec -T app pytest -q
 
 ## 输入与输出
 
-输入列见 `docs/DATA-DICTIONARY.md`。项目包含dirty.csv、clean.csv、legacy.csv，统一走实际导入路径。上传限制4MB，拒绝不带时区的时间。业务键按字符串保留，Decimal参与计算，空值不会当零。
+输入列见 `docs/DATA-DICTIONARY.md`。项目包含dirty.csv、clean.csv、legacy.csv，统一走实际导入路径。钢筋领料样例为rebar.csv，列见数据字典REBAR_COLUMNS，经独立M8流水线处理。上传限制4MB，拒绝不带时区的时间。业务键按字符串保留，Decimal参与计算，空值不会当零。
 
 `POST /api/runs` 接收sample或csv；`GET /api/runs`返回历史批次；`POST /api/runs/<id>/review`需要version与decision；`GET /api/runs/<id>/archive`返回唯一证据导出。
 

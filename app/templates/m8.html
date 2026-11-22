@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block kpis %}
+{% set m=stage.metrics %}
+<div class="kpis">
+  <div class="kpi">本期唯一可签净量/t<strong>{{m.current_period_net_total}}</strong></div>
+  <div class="kpi">累计已签净量/t<strong>{{m.certified_net_total}}</strong></div>
+  <div class="kpi">计入净量批次<strong>{{m.accepted_lines}}</strong></div>
+  <div class="kpi">损耗/错发隔离<strong>{{m.waste_quarantine + m.misdelivery_quarantine}}</strong></div>
+  <div class="kpi">超限隔离<strong>{{m.over_cap_quarantine}}</strong></div>
+  <div class="kpi">待补依据结转<strong>{{m.pending_evidence_carry}}</strong></div>
+  <div class="kpi">重试拦截<strong>{{m.retry_batches}}</strong></div>
+</div>
+{% endblock %}
+{% block toolbar %}
+<select id="dataset" aria-label="领料批"><option value="rebar.csv">钢筋加工场·11月领料</option></select>
+<button id="calculate" class="primary">重新归集裁决</button>
+<input type="file" id="attachment" accept=".csv" aria-label="领料文件"><button id="attach">导入</button>
+<button id="approve">签认</button><button id="publish" class="primary">发布</button>
+<button id="publish-fail">发布失败演练</button>
+<a class="btn" href="/api/runs/{{run.run_id}}/archive">证据导出</a>
+<span id="notice" role="status"></span>
+{% endblock %}
+{% block body %}
+<div class="grid">
+  <section class="panel">
+    <div class="receipt"><div><div class="serial">{{run.run_id|upper}}</div><strong>{{modules[index][1]}} · 本期唯一可签认钢筋净工程量</strong></div><span class="serial">{{rows|length}} 个计入净量批次 / 单位 t</span></div>
+    <div class="panel__body inputs"><input id="lookup" placeholder="查找批次或清单项" aria-label="查找批次"></div>
+    <div class="table-scroll"><table class="ledger">
+      <thead><tr><th>来源行</th>{% for key in columns %}<th>{{labels.get(key,key)}}</th>{% endfor %}</tr></thead>
+      <tbody id="valuation-rows">
+      {% for item in rows %}
+        <tr><td>{{item.get('_sources',[])|join('/')}}</td>{% for key in columns %}<td title="{{item.get(key,'')}}">{{item.get(key,'—')}}</td>{% endfor %}</tr>
+      {% else %}<tr><td class="empty">选择领料批后裁决。</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    <div class="signature"><span>领料批次　{{stage.metrics.net_batches}}</span><span>审核　{{run.decision}}</span><span>版本　{{run.version}}</span></div>
+  </section>
+  <div class="stack">
+    <section class="panel">
+      <div class="panel__head"><h2>追溯关系：净量 / 隔离 / 变更依据</h2><span>t</span></div>
+      <div class="panel__body">
+        {% for item,detail in stage.metrics.signable.items() %}
+        <div class="audit-line"><span>项{{item}} 图纸净量</span><b>{{detail.cap.drawing_net_qty}}</b></div>
+        <div class="audit-line"><span>项{{item}} 已批变更增量（{{detail.cap.approved_change_ids or '无'}}）</span><b>{{detail.cap.approved_change_qty}}</b></div>
+        <div class="audit-line"><span>项{{item}} 净量上限（图纸+已批变更）</span><b>{{detail.cap.cap_total}}</b></div>
+        <div class="audit-line"><span>项{{item}} 前期已审累计</span><b>{{detail.previous_approved_net}}</b></div>
+        <div class="audit-line"><span>项{{item}} 累计已签净量</span><b>{{detail.cumulative_certified_net}}</b></div>
+        <div class="audit-line"><span>项{{item}} 本期可签净量</span><b>{{detail.current_period_net}}</b></div>
+        {% endfor %}
+        <div class="audit-line"><span>来源行对平</span><b>{{'是' if stage.metrics.lineage_balanced else '否'}}</b></div>
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>变更依据台账</h2><span>{{stage.metrics.change_basis|length}}</span></div>
+      <div class="panel__body">
+      {% for c in stage.metrics.change_basis %}
+        <div class="reason"><b>{{c.change_id}} / {{'已批生效' if c._effective_for_period else '未批或未生效'}}</b><span>生效 {{c.effective}} / 量 {{c.qty}}t / {{c.note}}</span></div>
+      {% endfor %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>隔离与结转（不进工程款）</h2><span>{{stage.quarantine|length}}</span></div>
+      <div class="panel__body">
+      {% for q in stage.quarantine %}
+        <div class="reason"><b>{{q.reason}}</b><span>行 {{q.get('_line','—')}} / 批次 {{q.get('batch_no','—')}} / {{q.detail}}</span></div>
+      {% else %}<div class="empty">无隔离事项。</div>{% endfor %}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel__head"><h2>待补依据跨月结转（来源不丢失）</h2><span>{{stage.carry_forward|length}}</span></div>
+      <div class="panel__body">
+      {% for c in stage.carry_forward %}
+        <div class="reason"><b>{{c.batch_no}} / {{c.carry_qty}}t</b><span>行 {{c.get('_line','—')}} / 来源保留，补齐依据后下期重新归集</span></div>
+      {% else %}<div class="empty">无结转事项。</div>{% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>const certificate={{ {'id':run.run_id,'version':run.version}|tojson }};</script><script src="/static/rebar.js"></script>{% endblock %}
